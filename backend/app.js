@@ -106,6 +106,30 @@ const handleStartScreenShare = async ( ws,data ) => {
     }
 }
 
+const handleStopScreenShare = async ( ws,data ) => {
+    const {peerId} = data;
+    const peer = peers[peerId];
+    if(peer){
+        peer.producers.forEach(producer => {
+        producer.close();            
+        });
+        peer.producers = [];
+
+        // Notify the all other clients that screen Sharing has stopped.
+        broadcastExcept(ws,{type: 'screenShareStopped',peerId});
+        console.log(`Screen Share Stopped by ${peerId}`)
+    }
+}
+
+// BroadCasting to All Peers except Sender
+
+const broadcastExcept = (senderWs,message) => {
+    wss.clients.forEach((client) => {
+        if(client !== senderWs && client.readyState === Websocket.OPEN ){
+            client.send(JSON.stringify(message));
+        }
+    });
+};
 
 server.listen(PORT,()=>{
 console.log(`server started at: ${PORT}`);
