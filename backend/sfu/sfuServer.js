@@ -6,7 +6,9 @@ const peers = {};
 const init = async () =>{
     // SFU SERVER SETUP
     const worker = await mediasoup.createWorker();
-    router = await worker.createRouter({mediaCodecs:[{
+    router = await worker.createRouter({
+        mediaCodecs:[
+        {
         kind: 'video',
         mimeType: 'video/VP8',
         clockRate: 90000,
@@ -34,35 +36,74 @@ const init = async () =>{
 //Let’s dive into what the createTransport function needs to do to establish these connections.
 
 
-const createTransport = async (peerId) =>{
-    const transport = await router.createWebrtcTransport({
-        listenIps: [{ip:'0.0.0.0',announcedIp:'<PUBLIC_IP>'}],
-        enableUdp:true,
-        enableTcp:true,
-        preferUdp:true,
-    })
+// const createTransport = async (peerId) =>{
+//     const transport = await router.createWebRtcTransport({
+//         listenIps: [{ip:'0.0.0.0',announcedIp:'<PUBLIC_IP>'}],
+//         enableUdp:true,
+//         enableTcp:true,
+//         preferUdp:true,
+//     })
 
 
-    // set maximum incomming bitrate if needed.
-    await transport.setMaxIncomingBitrate(1500000);
+//     // set maximum incomming bitrate if needed.
+//     await transport.setMaxIncomingBitrate(1500000);
 
-    // strore the transport information in peer's record.
-    peers[peerId] = { transport };
+//     // strore the transport information in peer's record.
+//     peers[peerId] = { transport };
 
-    // Return transport Parameters to the peer
+//     // Return transport Parameters to the peer
 
-    return { 
-        id:transport.id,
-        iceParameters: transport.iceParameters,
-        iceCandidate : transport.iceCandidate,
-        dtlsParameters : transport.dtlsParameters,
-}
+//     return { 
+//         id:transport.id,
+//         iceParameters: transport.iceParameters,
+//         iceCandidate : transport.iceCandidate,
+//         dtlsParameters : transport.dtlsParameters,
+// }
 
-}
+// }
+
+
+const createTransport = async (peerId) => {
+    try{
+        const transport = await router.createWebRtcTransport({
+            listenIps: [{ ip: '0.0.0.0', announcedIp: '<PUBLIC_IP>' }],
+            enableUdp: true,
+            enableTcp: true,
+            preferUdp: true,
+        });
+        console.log("Transport Created:", transport.constructor.name);
+        // Check if the transport has a `produce` method and log any issues
+        if (typeof transport.produce !== "function") {
+            console.error("Transport object does not have produce method:", transport);
+            throw new Error("Transport creation failed or incompatible Mediasoup version");
+        }
+    
+        // Store the transport for the peer
+        if (!peers[peerId]) {
+            peers[peerId] = { transports: [], producers: [], consumers: [] };
+        }
+        peers[peerId].transports.push(transport);
+        console.log(`Transport created for ${peerId}`,transport)
+        // return {
+        //     id: transport.id,
+        //     iceParameters: transport.iceParameters,
+        //     iceCandidates: transport.iceCandidates,
+        //     dtlsParameters: transport.dtlsParameters
+        // };
+        return transport;
+    }catch(error){
+        console.error("Error in CreateTransport ",error);
+        throw error;
+
+    }
+    
+};
+
 
 // Create the Producer for IT! // Example : TEACHER || SCREEN SHARER
 
 const createProducer = async (transport,kind,rtpParameters) =>{
+    console.log("Producer Transport Type:", transport.constructor.name); // Should log WebRtcTransport
     const producer = await transport.produce({kind,rtpParameters});
     return producer;
 }
@@ -73,6 +114,7 @@ const createConsumer = async (transport,producerId,rtpCapabilities) =>{
         throw new Error("Can't Consume the Producer's Idea!")
     }
     const consumer = await transport.consume({producerId,rtpCapabilities});
+    console.log("ppppppppppppppppppppppp",consumer)
     return consumer;
 }
 
@@ -97,4 +139,4 @@ const handleDisconnect = async ( peerId ) =>{
 
 }
 
-module.exports(init,createTransport,createProducer,createConsumer)
+module.exports = {init,createTransport,createProducer,createConsumer,getRouter: ()=>router};
