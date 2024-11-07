@@ -175,6 +175,7 @@ wss.on('connection', (ws) => {
 
     ws.on('message', async (message) => {
         const data = JSON.parse(message);
+        console.log("Received message of type:", data.type);  // Add this to log each message type
 
         switch (data.type) {
             case 'join':
@@ -189,8 +190,13 @@ wss.on('connection', (ws) => {
                 await handleStopScreenShare(ws, data);
                 break;
             
+            case 'consumeScreenShare':
+                await handleConsumeScreenShare(ws, data);
+                break;
+
             //case 'requestScreenShareConsumer':  // New case for requesting the screen share stream
             case 'newScreenShare':
+                console.log("Received newScreenShare message:", data);  // Log full 
                 await handleNewScreenShare(ws, data);
                 break;
 
@@ -229,7 +235,7 @@ const handleJoin = async (ws, data) => {
     // Respond to the client after initializing the peer's info
     ws.send(JSON.stringify({ type: 'joined', peerId }));
     console.log(`Peer ${peerId} joined!`);
-    console.log(`Peer ${peerId} joined with RTP Capabilities:`, rtpCapabilities);
+    //console.log(`Peer ${peerId} joined with RTP Capabilities:`, rtpCapabilities);
 };
 
 // Handle Start Screen Share
@@ -251,14 +257,25 @@ const handleStartScreenShare = async (ws, data) => {
         }
         // Create transport for screen sharing
         const transport = await createTransport(peerId);
-        // console.log("Om KEERTHI SHARMA",transport)
+        console.log("Om KEERTHI SHARMA",transport)
         console.log("Transport Type:", transport.constructor.name);
 
         peers[peerId].transports.push(transport);
+      //  console.log("checkingPEEEEEEEEEEEEEEEEEERS",peers[peerId])
 
         // Create producer for screen sharing stream
         const producer = await createProducer(transport, kind, rtpParameters);
         peers[peerId].producers.push(producer);
+
+        ws.send(JSON.stringify({
+            type : 'screenShareResponse',
+            producerId : producer.id,
+            rtpParameters : producer.rtpParameters,
+            iceParameters : transport.iceParameters,
+            iceCandidates : transport.iceCandidates,
+            dtlsParameters : transport.dtlsParameters
+
+        }));
 
         // Notify other clients about the new screen-sharing stream
         broadcastExcept(ws, {
@@ -316,6 +333,7 @@ const handleDisconnect = async (peerId) => {
 const handleNewScreenShare = async (ws,data) => {
     console.log("I am in handlenewScreenshare");
     const {producerId,peerId} = data;
+    console.log(data)
     const studentId = "student"; // Ensure you have the correct student ID here
     const studentPeer = peers[studentId];
     
@@ -328,8 +346,10 @@ const handleNewScreenShare = async (ws,data) => {
 
     const transport = await createTransport(studentId);
     const rtpCapabilities = studentPeer.rtpCapabilities;
-    console.log("om",rtpCapabilities)
+    console.log("studentside transports...............",transport)
+    console.log("studentside rtpCapabilities...............",rtpCapabilities)
     const consumer = await createConsumer(transport,producerId,rtpCapabilities);
+    console.log("Created transport for student:", transport.id); // Log transport ID for confirmation
     peers[studentId].transports.push(transport);
     peers[studentId].consumers.push(consumer);
 
@@ -338,8 +358,10 @@ const handleNewScreenShare = async (ws,data) => {
         producerId,
         id:consumer.id,
         kind:consumer.kind,
-        rtpParameters:consumer.rtpParameters,
-        routerRtpCapabilities: router.rtpCapabilities, // Send RTP capabilities to students
+        //rtpParameters:consumer.rtpParameters,
+        rtpCapabilities,
+        transportId: transport.id,  // Make sure the transportId is included
+       // routerRtpCapabilities: router.rtpCapabilities, // Send RTP capabilities to students
 
         
     }))
@@ -348,21 +370,24 @@ const handleNewScreenShare = async (ws,data) => {
 // handleConnectTransport
 
 const handleConnectTransport = async ( ws,data ) => {
-    const {transportId,dtlsParameters} = data;
-
+    //console.log("i am dataaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",data)
+    const { producerId,dtlsParameters} = data;
+    //console.log(`Received connectTransport message for transport ${ producerId} with DTLS parameters:`, dtlsParameters);
 
     try{
         // find the transport in the peers dictonary
         let transport;
         for (const peerId in peers){
             const peer = peers[peerId];
-            transport = peer.transports.find((t)=>t.id === transportId);
+            transport = peer.transports.find((t)=>t.id === producerId);
+      //      console.log("transporrrrrrrrrrrrrrrrrrr",transport)
+        //    console.log("Peers dictonary...............",peers)
             if(transport){
                    break; 
             }}
 
             if(!transport){
-                console.warn(`Transport with ID ${transportId} not found`);
+                console.warn(`Transport with ID ${producerId} not found`);
                 return;
             }
 
@@ -371,7 +396,7 @@ const handleConnectTransport = async ( ws,data ) => {
 
             // notify the clients that the transport is connected!
             ws.send(JSON.stringify({type:'connectTransportSuccess'}));
-            console.log(`Transport ${transportId} connected successfully!`);
+            console.log(`Transport ${producerId} connected successfully!`);
         
     }catch(error){
         console.error('Error connecting transport:', error);
@@ -379,7 +404,32 @@ const handleConnectTransport = async ( ws,data ) => {
     }
 }
 
+// Handle Consumer Creation for Screen Sharing
+const handleConsumeScreenShare = async (ws, data) => {
+    const { producerId, peerId, rtpCapabilities } = data;
 
+    const studentPeer = peers[peerId];
+    if (!studentPeer) {
+        console.warn(`Student with id ${peerId} not found.`);
+        return;
+    }
+
+    // Create a transport for the consumer if it doesn’t already exist
+    const transport = await createTransport(peerId);
+    studentPeer.transports.push(transport);
+
+    // Use rtpCapabilities provided by the student to create the consumer
+    const consumer = await createConsumer(transport, producerId, rtpCapabilities);
+    studentPeer.consumers.push(consumer);
+
+    ws.send(JSON.stringify({
+        type: 'consumeScreenShare',
+        producerId,
+        id: consumer.id,
+        kind: consumer.kind,
+        rtpParameters: consumer.rtpParameters
+    }));
+};
 
 
 

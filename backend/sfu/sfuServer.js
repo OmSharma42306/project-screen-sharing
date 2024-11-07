@@ -3,29 +3,29 @@ const mediasoup = require('mediasoup');
 let router;
 const peers = {};
 
-const init = async () =>{
-    // SFU SERVER SETUP
-    const worker = await mediasoup.createWorker();
-    router = await worker.createRouter({
-        mediaCodecs:[
-        {
-        kind: 'video',
-        mimeType: 'video/VP8',
-        clockRate: 90000,
-        parameters: {},
-    },
-    {
-        kind: 'video',
-        mimeType: 'video/H264',
-        clockRate: 90000,
-        parameters: {
-            'level-asymmetry-allowed': 1,
-            'packetization-mode': 1,
-            'profile-level-id': '42e01f',
+    const init = async () =>{
+        // SFU SERVER SETUP
+        const worker = await mediasoup.createWorker();
+        router = await worker.createRouter({
+            mediaCodecs:[
+            {
+            kind: 'video',
+            mimeType: 'video/VP8',
+            clockRate: 90000,
+            parameters: {},
         },
-    },]});
-    console.log("SFU SERVER INITIALIZED!");
-}
+        {
+            kind: 'video',
+            mimeType: 'video/H264',
+            clockRate: 90000,
+            parameters: {
+                'level-asymmetry-allowed': 1,
+                'packetization-mode': 1,
+                'profile-level-id': '42e01f',
+            },
+        },]});
+        console.log("SFU SERVER INITIALIZED!");
+    }
 
 
 // createTransport Important Points: 
@@ -71,7 +71,13 @@ const createTransport = async (peerId) => {
             enableTcp: true,
             preferUdp: true,
         });
-        console.log("Transport Created:", transport.constructor.name);
+        console.log(`Transport Created for peerId ${peerId}:`, {
+            id: transport.id,
+            iceParameters: transport.iceParameters,
+            iceCandidates: transport.iceCandidates,
+            dtlsParameters: transport.dtlsParameters,
+        });
+        //console.log("Transport Created:", transport.constructor.name);
         // Check if the transport has a `produce` method and log any issues
         if (typeof transport.produce !== "function") {
             console.error("Transport object does not have produce method:", transport);
@@ -83,7 +89,7 @@ const createTransport = async (peerId) => {
             peers[peerId] = { transports: [], producers: [], consumers: [] };
         }
         peers[peerId].transports.push(transport);
-        console.log(`Transport created for ${peerId}`,transport)
+        //console.log(`Transport created for ${peerId}`,transport)
         // return {
         //     id: transport.id,
         //     iceParameters: transport.iceParameters,
@@ -110,33 +116,35 @@ const createProducer = async (transport,kind,rtpParameters) =>{
 
 // Create the Receiver for IT! // Example : STUDENTS || SCREEN RECEIVER
 const createConsumer = async (transport,producerId,rtpCapabilities) =>{
+    console.log("i am from consumer ...")
+    console.log("transport : ",transport)
+    console.log("Producer : ",producerId)
     if(!router.canConsume({producerId,rtpCapabilities})){
         throw new Error("Can't Consume the Producer's Idea!")
     }
     const consumer = await transport.consume({producerId,rtpCapabilities});
-    console.log("ppppppppppppppppppppppp",consumer)
     return consumer;
 }
 
 
 // Handle the Peer Disconnect Handling..
 
-const handleDisconnect = async ( peerId ) =>{
-    const peer = peers[peerId];
-    if(peer){
-        peer.transports.forEach(transport => {
-            transport.close();
-        });
-        peer.producers.forEach(producer => {
-            producer.close();
-        });
+// const handleDisconnect = async ( peerId ) =>{
+//     const peer = peers[peerId];
+//     if(peer){
+//         peer.transports.forEach(transport => {
+//             transport.close();
+//         });
+//         peer.producers.forEach(producer => {
+//             producer.close();
+//         });
 
-        peer.consumers.forEach(consumer => {
-            consumer.close();
-        })
-        delete peers[peerId]; 
-    }
+//         peer.consumers.forEach(consumer => {
+//             consumer.close();
+//         })
+//         delete peers[peerId]; 
+//     }
 
-}
+// }
 
 module.exports = {init,createTransport,createProducer,createConsumer,getRouter: ()=>router};
