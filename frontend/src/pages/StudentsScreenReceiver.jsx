@@ -6,13 +6,13 @@ const setupDeviceAndJoin = async (ws, deviceRef) => {
         const device = new Device();
         const response = await fetch('http://localhost:4000/rtpCapabilities');
         const routerRtpCapabilities = await response.json();
-        console.log('Fetched routerRtpCapabilities:', routerRtpCapabilities);
+        //console.log('Fetched routerRtpCapabilities:', routerRtpCapabilities);
 
         await device.load({ routerRtpCapabilities });
         deviceRef.current = device;
 
         const rtpCapabilities = device.rtpCapabilities;
-        console.log("student rtcCapabilites",rtpCapabilities)
+        //console.log("student rtcCapabilites",rtpCapabilities)
         ws.send(JSON.stringify({
             type: 'join',
             peerId: 'student',
@@ -40,7 +40,7 @@ export const StudentsScreenReceiver = () => {
 
         ws.onmessage = async (event) => {
             const data = JSON.parse(event.data);
-
+            console.log("Student received message of type:", data.type, data);
             if (!deviceRef.current) {
                 messageQueue.current.push(data);
                 return;
@@ -51,17 +51,13 @@ export const StudentsScreenReceiver = () => {
 
         const handleScreenShareMessage = async (data) => {
             if (data.type === 'newScreenShare') {
-                //const { transportId, dtlsParameters, iceParameters, iceCandidates } = data;
-                
-                // console.log("dtlsParameters",dtlsParameters)
-                // console.log("iceParameters",iceParameters)
-                // console.log("iceCandidates",iceCandidates)
                 const { producerId, kind, rtpParameters: rtpParametersJson } = data;
                 const rtpParameters = rtpParametersJson ? JSON.parse(rtpParametersJson) : undefined;
-                console.log("id", data.peerId);
-                console.log(`Producer id: ${producerId}, kind: ${kind}, rtpParameters: ${JSON.stringify(rtpParameters, null, 2)}`);
-                console.log("Transport ID ",producerId)
+                // console.log("id", data.peerId);
+                // console.log(`Producer id: ${producerId}, kind: ${kind}, rtpParameters: ${JSON.stringify(rtpParameters, null, 2)}`);
+                // console.log("Transport ID ",producerId)
                 if (deviceRef.current && kind === 'video') {
+                    console.log("hi")
                     try {
                         const transport = await deviceRef.current.createRecvTransport({
                             id: data.peerId,
@@ -69,11 +65,12 @@ export const StudentsScreenReceiver = () => {
                             iceCandidates: data.iceCandidates,
                             dtlsParameters: data.dtlsParameters,
                         });
+                        console.log("Om sharma student transport",transport)
 
                         transport.on('connect', ({ dtlsParameters }, callback, errback) => {
+                            console.log("i am in transport on")
                             ws.send(JSON.stringify({
                                 type: 'connectTransport',
-                                // transportId: transport.id
                                 producerId,
                                 dtlsParameters
                             }));
@@ -81,26 +78,30 @@ export const StudentsScreenReceiver = () => {
                             ws.onmessage = (event) => {
                                 const response = JSON.parse(event.data);
                                 if (response.type === 'connectTransportSuccess') {
+                                    console.log("Transport connected successfully!");
                                     callback();
                                 } else if (response.type === 'connectTransportError') {
+                                    console.error("Failed to connect transport");
                                     errback(new Error('Failed to connect transport on server'));
                                 }
                             };
                         });
-                        // console.log("data.peer.id",data.peerId)
-                        // console.log("kind",kind)
-                        // console.log("rtpparameters",rtpParameters)
-                        // console.log("producerid",producerId)
                         const consumer = await transport.consume({
                             id: data.peerId,
                             producerId,
                             kind,
                             rtpParameters
                         });
+                        console.log("i am at consumer")
                         console.log("Adding track to MediaStream", consumer);
                         const stream = new MediaStream();
-                        stream.addTrack(consumer.track);
+                        if(consumer.track){
+                            stream.addTrack(consumer.track);
                         videoRef.current.srcObject = stream;
+                        }else{
+                            console.error("consumer track is missing")
+                        }
+                        
                     } catch (err) {
                         console.error('Error Consuming Screen Share:', err);
                     }
